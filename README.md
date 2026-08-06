@@ -4,7 +4,7 @@
 
 Open the app in Slack, and the App Home tab shows your saved details and a button per form. Click one, fill in the fields that change per request, and submit. The bot POSTs to the form and reports back by DM.
 
-Name, email, client, country and manager are entered once and reused for every request on every form, until you click **Edit info**.
+Name, email, client, work country and supervisor are entered once and reused for every request on every form, until you click **Edit info**.
 
 | Form | ID | Status |
 | --- | --- | --- |
@@ -17,37 +17,29 @@ Design rationale is in [`docs/PLAN.md`](docs/PLAN.md) (Korean); the build spec i
 
 ## ⚠️ Before first use
 
-**`src/forms/pto/schema.json` is a placeholder.** Its field names, option values, date format and success marker were read off `tests/fixtures/pto-form.html` — a hand-written stand-in, not the real form. Everything is wired up and tested against that fixture, but a submission to the live form will not land correctly until the mapping is verified.
+`src/forms/pto/schema.json` is mapped from the live form definition and verified against a real submission payload — field names, the date format, the country and category values, and how the "Other" category is posted are all confirmed.
 
-This is the one step that cannot be automated: deciding which field means "start date" requires a human.
+**One value is not**: `successMarker`. It still reads `REPLACE ME`, so every submission reports *"Could not confirm whether the submission went through"* even when it worked.
 
-1. **Snapshot the real form and list its fields.**
+To finish:
 
-   ```bash
-   pnpm extract-schema --url https://<the real form url> --out /tmp/raw.json
-   curl -s https://<the real form url> > tests/fixtures/pto-form.html
-   ```
+1. Submit the form manually once, in a browser, with a **one-day date in the past** (ask the form owner to delete it afterwards).
+2. Copy a literal string from the page shown afterwards — a sentence from the confirmation is enough.
+3. Put it in `successMarker` and drop the `$comment` line.
+4. `pnpm test`, then use it yourself for a few days before telling the team.
 
-2. **Submit the form manually once**, in a browser with **F12 → Network** open, using your own name and a **one-day date in the past** (ask the form owner to cancel it afterwards). Right-click the POST request → **Copy as cURL**.
+**Why this matters more than it looks**: Formstack answers HTTP 200 to a rejected submission just as readily as an accepted one, so the marker is the only thing distinguishing the two. Without it the bot cannot tell success from silent failure — which is why it reports neither.
 
-3. **Read four things off that request**, and put them in `src/forms/pto/schema.json`:
+### If the form changes
 
-   | What | Where | Why it matters |
-   | --- | --- | --- |
-   | Field names | Payload tab | `field12345678`-style. Match them to labels. |
-   | Date format | The date values in the payload | `08/17/2026` vs `17/08/2026`. **The easiest thing to get silently wrong.** |
-   | Option values | The leave type value | May be `1` rather than `Vacation`. Use `value`, never the visible label. |
-   | Success marker | The page after submitting | The **only** signal the bot uses to decide a submission worked. |
+Re-snapshot the page and re-read the definition:
 
-   Also check whether dates are split into `field123-M` / `-D` / `-Y` inputs. If so, set `"parts": true` on that field. Formstack does this often.
+```bash
+curl -s https://targetcw.formstack.com/forms/international_pto > tests/fixtures/pto-form.html
+pnpm extract-schema --url https://targetcw.formstack.com/forms/international_pto --out /tmp/raw.json
+```
 
-4. **Remove the `$comment` line** from `schema.json` once the values are real.
-
-5. `pnpm test` — the suite checks the mapping against the committed fixture.
-
-6. Use it yourself for a few days before telling the team. If the date format is wrong, announcing it first means several people's leave requests go in wrong.
-
----
+`pnpm test` then checks the mapping against the new snapshot, and the engine's field check catches anything renamed before it submits.
 
 ## Quick start
 
@@ -213,9 +205,11 @@ slack/handlers.ts ──> formstack/engine.ts ──> the form
 A submission runs four steps, in order:
 
 1. GET the form page
-2. Copy every hidden input **verbatim** — some are session tokens, some are anti-spam honeypots that must stay empty — and check that every mapped field is still present. This check is the only thing that catches a renamed field; without it the server discards unknown fields and answers 200.
-3. Build the body: profile fields, then request fields, with dates converted to the form's format
+2. Read the form definition out of it and check that every mapped field is still there. The page has **no `<form>` element** — the renderer builds one client-side — but it embeds the whole definition as JSON, which is both readable without a browser and steadier than scraping markup. Values the page carries (`form`, `viewkey`, `displayTime`) are echoed back verbatim. This check is the only thing that catches a renamed field; without it the server discards unknown fields and answers 200.
+3. Build the body: profile fields, then request fields, with dates split into the parts a Formstack datetime field expects
 4. Decide the outcome **from the success marker only**. Formstack returns 200 for validation errors, so the status code decides nothing.
+
+No browser is needed because the submission is one ordinary `multipart/form-data` POST with no CSRF token, no CAPTCHA and no session cookie — everything in it is either constant, carried by the page, or ours to fill in. Driving a real browser would cost seconds and gigabytes to assemble the same request.
 
 Failures the user can fix (end date before start date, a rejected value) appear inline in the modal, where their input still is. Failures the operator must fix arrive as a DM containing the reason, a link to the form, and a copy-paste block of every value — so a broken bot costs the user 30 seconds, not their afternoon.
 

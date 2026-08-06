@@ -21,14 +21,17 @@ export interface ProfileModalOptions {
   meta: ProfileModalMeta;
 }
 
+/** Slack returns at most this many options for an external select. */
+const MAX_SUGGESTIONS = 100;
+
 /**
  * The country list comes from whichever registered form declares one.
  *
- * A free-text country would eventually be rejected by the form for not matching
- * an option exactly, and the user would never learn why. Reading the list from
- * the form schema keeps the two in step without naming a particular form here.
+ * A free-text country would be rejected by the form for not matching an option
+ * exactly, and the user would never learn why — the values carry a region
+ * suffix ("South Korea - APAC Region") that nobody would type by hand.
  */
-function countryOptions(): string[] {
+export function countryOptions(): string[] {
   for (const form of forms) {
     const options = form.schema.profile.country.options;
     if (options && options.length > 0) return options;
@@ -36,12 +39,27 @@ function countryOptions(): string[] {
   return [];
 }
 
-function textInput(key: keyof Profile, initial: string | undefined, hint?: string): KnownBlock {
+/**
+ * Countries matching what the user has typed.
+ *
+ * The list runs to 189 entries and a Slack static select holds 100, so the
+ * picker is an external select and this answers its lookups. Matching anywhere
+ * in the string means "korea" finds "South Korea - APAC Region" and "apac"
+ * lists the whole region.
+ */
+export function matchCountries(query: string): string[] {
+  const needle = query.trim().toLowerCase();
+  const all = countryOptions();
+  const matches = needle ? all.filter((country) => country.toLowerCase().includes(needle)) : all;
+
+  return matches.slice(0, MAX_SUGGESTIONS);
+}
+
+function textInput(key: keyof Profile, initial: string | undefined): KnownBlock {
   return {
     type: 'input',
     block_id: blockIdFor(key),
     label: { type: 'plain_text', text: PROFILE_LABELS[key] },
-    ...(hint ? { hint: { type: 'plain_text' as const, text: hint } } : {}),
     element: {
       type: 'plain_text_input',
       action_id: key,
@@ -53,6 +71,8 @@ function textInput(key: keyof Profile, initial: string | undefined, hint?: strin
 export function profileModal(options: ProfileModalOptions): ModalView {
   const { initial, meta } = options;
   const countries = countryOptions();
+  const selectedCountry =
+    initial?.country && countries.includes(initial.country) ? initial.country : undefined;
 
   const blocks: KnownBlock[] = [
     {
@@ -64,32 +84,28 @@ export function profileModal(options: ProfileModalOptions): ModalView {
         },
       ],
     },
-    textInput('fullName', initial?.fullName),
+    textInput('firstName', initial?.firstName),
+    textInput('lastName', initial?.lastName),
     textInput('email', initial?.email),
     textInput('clientName', initial?.clientName),
   ];
 
   if (countries.length > 0) {
-    const selected =
-      initial?.country && countries.includes(initial.country) ? initial.country : undefined;
-
     blocks.push({
       type: 'input',
       block_id: blockIdFor('country'),
       label: { type: 'plain_text', text: PROFILE_LABELS.country },
+      hint: { type: 'plain_text', text: 'Start typing to search.' },
       element: {
-        type: 'static_select',
+        type: 'external_select',
         action_id: 'country',
-        placeholder: { type: 'plain_text', text: 'Select a country' },
-        options: countries.map((country) => ({
-          text: { type: 'plain_text' as const, text: country },
-          value: country,
-        })),
-        ...(selected
+        placeholder: { type: 'plain_text', text: 'Search for your work country' },
+        min_query_length: 0,
+        ...(selectedCountry
           ? {
               initial_option: {
-                text: { type: 'plain_text' as const, text: selected },
-                value: selected,
+                text: { type: 'plain_text' as const, text: selectedCountry },
+                value: selectedCountry,
               },
             }
           : {}),
@@ -100,8 +116,8 @@ export function profileModal(options: ProfileModalOptions): ModalView {
   }
 
   blocks.push(
-    textInput('managerName', initial?.managerName),
-    textInput('managerEmail', initial?.managerEmail),
+    textInput('supervisorName', initial?.supervisorName),
+    textInput('supervisorEmail', initial?.supervisorEmail),
   );
 
   if (initial) {

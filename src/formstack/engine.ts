@@ -3,7 +3,8 @@ import * as cheerio from 'cheerio';
 import { logger } from '../logger.js';
 import { PROFILE_KEYS, type Profile } from '../profile.js';
 import type { FieldDef, FormDefinition, FormSchema } from '../forms/types.js';
-import { requiredFieldNames, setDateField } from './schema.js';
+import { parseFormPage } from './formPage.js';
+import { requiredFieldNames, setDateField, type FieldSink } from './schema.js';
 
 export type SubmitFailure = {
   ok: false;
@@ -37,7 +38,7 @@ function describe(error: unknown): string {
  * Optional fields are omitted entirely rather than sent empty: an empty string
  * is a value, and some forms treat it as one.
  */
-function setField(body: URLSearchParams, field: FieldDef, value: string, schema: FormSchema): void {
+function setField(body: FieldSink, field: FieldDef, value: string, schema: FormSchema): void {
   if (!value) {
     if (field.optional) return;
     body.set(field.name, '');
@@ -82,45 +83,28 @@ export async function submitForm<T>(
     return failure('network', `The form page returned HTTP ${page.status}`);
   }
 
-  const $ = cheerio.load(await page.text());
-  const formElement = $('form').first();
-  if (formElement.length === 0) {
-    return failure('schema', 'No form element was found on the page');
+  // 2. Read the form definition and verify it still exposes what we map.
+  let definition;
+  try {
+    definition = parseFormPage(await page.text());
+  } catch (error) {
+    return failure('schema', describe(error));
   }
 
-  const action = formElement.attr('action');
-  const target = action ? new URL(action, schema.formUrl).toString() : schema.action;
-
-  // 2. Harvest hidden inputs, verbatim.
-  //
-  // Values are copied exactly as found, empty ones included. Some are session
-  // tokens that must be echoed back; some are anti-spam honeypots that must stay
-  // empty. Filtering or populating them is how a submission gets silently
-  // classified as spam.
-  const body = new URLSearchParams();
-  formElement.find('input[type="hidden"]').each((_, element) => {
-    const name = $(element).attr('name');
-    if (!name) return;
-    body.set(name, $(element).attr('value') ?? '');
-  });
-
-  // Verify the form still exposes every field the mapping expects. Unknown
-  // fields are discarded server-side without complaint, so a rename shows up as
-  // a successful submission with missing data unless it is caught here.
-  const present = new Set<string>();
-  formElement.find('input, select, textarea').each((_, element) => {
-    const name = $(element).attr('name');
-    if (name) present.add(name);
-  });
-
-  const missing = requiredFieldNames(schema).filter((name) => !present.has(name));
+  const missing = requiredFieldNames(schema).filter((name) => !definition.fields.has(name));
   if (missing.length > 0) {
     return failure('schema', `Fields not found on the form: ${missing.join(', ')}`);
   }
 
-  // 3. Build the body: profile fields first, then the request-specific ones.
+  const target = definition.action ?? schema.action;
+
+  // 3. Build the body: page values first, then constants, then the mapping.
+  const values = new Map<string, string>();
+  for (const [name, value] of Object.entries(definition.hidden)) values.set(name, value);
+  for (const [name, value] of Object.entries(schema.constants ?? {})) values.set(name, value);
+
   for (const key of PROFILE_KEYS) {
-    setField(body, schema.profile[key], profile[key], schema);
+    setField(values, schema.profile[key], profile[key], schema);
   }
 
   for (const [key, value] of Object.entries(form.toFieldValues(request))) {
@@ -128,20 +112,23 @@ export async function submitForm<T>(
     if (!field) {
       return failure('schema', `The form mapping has no field for "${key}"`);
     }
-    setField(body, field, value, schema);
+    setField(values, field, value, schema);
   }
 
   // 4. Submit and interpret the response.
+  //
+  // multipart/form-data, matching what the renderer sends. fetch sets the
+  // Content-Type and boundary from the FormData body; setting it by hand
+  // produces a boundary mismatch and a body the server cannot parse.
+  const body = new FormData();
+  for (const [name, value] of values) body.set(name, value);
+
   let response: Response;
   try {
     response = await fetch(target, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/x-www-form-urlencoded',
-        'User-Agent': USER_AGENT,
-        Referer: schema.formUrl,
-      },
-      body: body.toString(),
+      headers: { 'User-Agent': USER_AGENT, Referer: schema.formUrl },
+      body,
       redirect: 'follow',
       signal: AbortSignal.timeout(SUBMIT_TIMEOUT_MS),
     });
@@ -158,9 +145,9 @@ export async function submitForm<T>(
     return { ok: true };
   }
 
-  const $response = cheerio.load(html);
-  const errors = $response('.fsError, .fsValidationError')
-    .map((_, element) => $response(element).text().trim())
+  const $ = cheerio.load(html);
+  const errors = $('.fsError, .fsValidationError')
+    .map((_, element) => $(element).text().trim())
     .get()
     .filter(Boolean);
 

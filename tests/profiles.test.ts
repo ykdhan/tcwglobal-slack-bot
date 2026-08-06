@@ -7,12 +7,13 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { Profile } from '../src/profile.js';
 
 const PROFILE: Profile = {
-  fullName: 'Hong Gildong',
+  firstName: 'Gildong',
+  lastName: 'Hong',
   email: 'gildong@example.com',
   clientName: 'Acme Corp',
-  country: 'South Korea',
-  managerName: 'Jane Doe',
-  managerEmail: 'jane@acme.com',
+  country: 'South Korea - APAC Region',
+  supervisorName: 'Jane Doe',
+  supervisorEmail: 'jane@acme.com',
 };
 
 let dir: string;
@@ -61,10 +62,10 @@ describe('profile store', () => {
   it('keeps profiles separate per user', async () => {
     const store = await loadStore();
     store.saveProfile('U01ABCDEF', PROFILE);
-    store.saveProfile('U02GHIJKL', { ...PROFILE, fullName: 'Kim Cheolsu' });
+    store.saveProfile('U02GHIJKL', { ...PROFILE, firstName: 'Cheolsu' });
 
-    expect(store.getProfile('U01ABCDEF')?.fullName).toBe('Hong Gildong');
-    expect(store.getProfile('U02GHIJKL')?.fullName).toBe('Kim Cheolsu');
+    expect(store.getProfile('U01ABCDEF')?.firstName).toBe('Gildong');
+    expect(store.getProfile('U02GHIJKL')?.firstName).toBe('Cheolsu');
   });
 
   it('overwrites an existing profile rather than merging', async () => {
@@ -92,13 +93,13 @@ describe('profile store', () => {
   it('leaves other users untouched when forgetting one', async () => {
     const store = await loadStore();
     store.saveProfile('U01ABCDEF', PROFILE);
-    store.saveProfile('U02GHIJKL', { ...PROFILE, fullName: 'Kim Cheolsu' });
+    store.saveProfile('U02GHIJKL', { ...PROFILE, firstName: 'Cheolsu' });
     store.forgetProfile('U01ABCDEF');
 
-    expect(store.getProfile('U02GHIJKL')?.fullName).toBe('Kim Cheolsu');
+    expect(store.getProfile('U02GHIJKL')?.firstName).toBe('Cheolsu');
 
     const reloaded = await loadStore();
-    expect(reloaded.getProfile('U02GHIJKL')?.fullName).toBe('Kim Cheolsu');
+    expect(reloaded.getProfile('U02GHIJKL')?.firstName).toBe('Cheolsu');
   });
 
   it('writes no plaintext field values to disk', async () => {
@@ -121,10 +122,7 @@ describe('profile store', () => {
     expect(existsSync(`${dataFile}.tmp`)).toBe(false);
   });
 
-  it('loads a profile stored before a field was removed', async () => {
-    // Removing a field from ProfileSchema must not strand the profiles already
-    // on disk. They are decrypted, the departed field is dropped, and the app
-    // boots — rather than throwing and taking the deployment down.
+  it('drops a field the schema no longer has, and keeps the rest', async () => {
     const { encrypt } = await import('../src/store/crypto.js');
     const legacy = { ...PROFILE, employeeId: 'EMP-1024' };
     writeFileSync(dataFile, JSON.stringify({ U01ABCDEF: encrypt(JSON.stringify(legacy)) }));
@@ -133,6 +131,26 @@ describe('profile store', () => {
 
     expect(store.getProfile('U01ABCDEF')).toEqual(PROFILE);
     expect(store.getProfile('U01ABCDEF')).not.toHaveProperty('employeeId');
+  });
+
+  it('discards a profile the schema has outgrown instead of refusing to boot', async () => {
+    // A renamed or added profile field invalidates what is already stored. The
+    // data is re-enterable in seconds; a boot loop is not, and it would take the
+    // app down for everyone, including users whose profiles are still valid.
+    const { encrypt } = await import('../src/store/crypto.js');
+    const stale = { fullName: 'Hong Gildong', email: 'gildong@example.com' };
+    writeFileSync(
+      dataFile,
+      JSON.stringify({
+        U01ABCDEF: encrypt(JSON.stringify(stale)),
+        U02GHIJKL: encrypt(JSON.stringify(PROFILE)),
+      }),
+    );
+
+    const store = await loadStore();
+
+    expect(store.getProfile('U01ABCDEF')).toBeNull();
+    expect(store.getProfile('U02GHIJKL')).toEqual(PROFILE);
   });
 
   it('throws at load when the stored data cannot be decrypted', async () => {

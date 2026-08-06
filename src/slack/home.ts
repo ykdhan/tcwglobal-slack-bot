@@ -1,7 +1,7 @@
 import type { HomeView, KnownBlock } from '@slack/types';
 
 import { forms } from '../forms/registry.js';
-import type { Profile } from '../profile.js';
+import { displayName, type Profile } from '../profile.js';
 
 /**
  * The App Home tab — the app's only entry point.
@@ -53,9 +53,9 @@ function withProfile(profile: Profile): KnownBlock[] {
         type: 'mrkdwn',
         text:
           '*Your information*\n' +
-          `${profile.fullName} · ${profile.email}\n` +
+          `${displayName(profile)} · ${profile.email}\n` +
           `${profile.clientName} · ${profile.country}\n` +
-          `Manager: ${profile.managerName} (${profile.managerEmail})`,
+          `Supervisor: ${profile.supervisorName} (${profile.supervisorEmail})`,
       },
     },
     { type: 'divider' },

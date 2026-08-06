@@ -8,7 +8,8 @@ import type { FieldDef, FormSchema } from '../forms/types.js';
 const FieldDefSchema = z.object({
   name: z.string().min(1),
   type: z.literal('date').optional(),
-  parts: z.boolean().optional(),
+  parts: z.enum(['hyphenParts', 'datetimeParts']).optional(),
+  base: z.string().optional(),
   optional: z.boolean().optional(),
   options: z.array(z.string()).optional(),
 });
@@ -18,6 +19,7 @@ const FormSchemaSchema = z.object({
   action: z.string().min(1),
   successMarker: z.string().min(1),
   dateFormat: z.enum(['MM/DD/YYYY', 'DD/MM/YYYY']),
+  constants: z.record(z.string()).optional(),
   profile: z.object(
     Object.fromEntries(PROFILE_KEYS.map((key) => [key, FieldDefSchema])) as Record<
       (typeof PROFILE_KEYS)[number],
@@ -60,40 +62,54 @@ export function loadSchema(path: string): FormSchema {
   return parsed.data;
 }
 
-/** The three input names a split date field is spread across. */
-export function datePartNames(field: FieldDef): [string, string, string] {
-  return [`${field.name}-M`, `${field.name}-D`, `${field.name}-Y`];
-}
-
 /**
- * Every field name the form must expose for a submission to be meaningful.
+ * Every form field a submission depends on.
  *
- * Split dates expand into their three suffixed names, because that is what the
- * presence check compares against — the base name never appears in the markup.
+ * Inputs that are one part of a larger field — `-first` and `-last`, a radio's
+ * `_other` companion — collapse onto the field they belong to, because that is
+ * what the form advertises. Date part suffixes are not expanded for the same
+ * reason: the form declares one datetime field, not seven inputs.
  */
 export function requiredFieldNames(schema: FormSchema): string[] {
   const names: string[] = [];
 
   for (const field of [...Object.values(schema.profile), ...Object.values(schema.request)]) {
     if (field.optional) continue;
-    if (field.parts) {
-      names.push(...datePartNames(field));
-    } else {
-      names.push(field.name);
-    }
+    names.push(field.base ?? field.name);
   }
 
   return [...new Set(names)];
 }
 
+/** Anything a value can be written to: URLSearchParams, FormData, or a Map. */
+export interface FieldSink {
+  set(name: string, value: string): unknown;
+}
+
+const MONTH_ABBREVIATIONS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+
 /**
  * Write a `YYYY-MM-DD` value onto the body in whatever shape the form expects.
  *
- * Dates stay as ISO strings everywhere else in the codebase; this is the single
- * place they are reformatted, and the only place a day/month mix-up can happen.
+ * Calendar dates stay ISO strings everywhere else in the codebase; this is the
+ * single place they are reformatted, and the only place a day/month mix-up can
+ * happen.
  */
 export function setDateField(
-  body: URLSearchParams,
+  body: FieldSink,
   field: FieldDef,
   iso: string,
   schema: FormSchema,
@@ -103,11 +119,34 @@ export function setDateField(
     throw new Error(`Expected a YYYY-MM-DD date for ${field.name}, got: ${iso}`);
   }
 
-  if (field.parts) {
+  if (field.parts === 'hyphenParts') {
     body.set(`${field.name}-M`, month);
     body.set(`${field.name}-D`, day);
     body.set(`${field.name}-Y`, year);
-  } else if (schema.dateFormat === 'DD/MM/YYYY') {
+    return;
+  }
+
+  if (field.parts === 'datetimeParts') {
+    const abbreviation = MONTH_ABBREVIATIONS[Number(month) - 1];
+    if (!abbreviation) {
+      throw new Error(`Not a month: ${month} (from ${iso})`);
+    }
+
+    body.set(`${field.name}M`, abbreviation);
+    body.set(`${field.name}D`, String(Number(day)));
+    body.set(`${field.name}Y`, year);
+
+    // The form displays no time control, but the renderer still posts these and
+    // a datetime field is stored with a time. Midnight keeps the stored value on
+    // the date the user actually picked, in any interpretation.
+    body.set(`${field.name}H`, '12');
+    body.set(`${field.name}I`, '00');
+    body.set(`${field.name}S`, '00');
+    body.set(`${field.name}A`, 'AM');
+    return;
+  }
+
+  if (schema.dateFormat === 'DD/MM/YYYY') {
     body.set(field.name, `${day}/${month}/${year}`);
   } else {
     body.set(field.name, `${month}/${day}/${year}`);

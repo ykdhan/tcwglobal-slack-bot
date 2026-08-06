@@ -31,7 +31,7 @@ These are decisions, not suggestions. Do not "improve" them.
 
 | Constraint | Rationale |
 |---|---|
-| **No browser automation** (no Playwright/Puppeteer) | The forms are plain HTML. A direct `fetch` POST is ~300ms vs ~15s and 150MB vs 1.5GB. |
+| **No browser automation** (no Playwright/Puppeteer) | A direct `fetch` POST is ~300ms vs ~15s and 150MB vs 1.5GB. **Correction:** the form is *not* plain HTML — it is rendered client-side and the page carries no `<form>` element. The decision still holds: the POST it builds has no CSRF token, no CAPTCHA and no session cookie, verified against a real payload, and the form definition is embedded in the page as JSON. See §8. |
 | **No database** | Storage is a single encrypted JSON file. Expected user count is under 50. |
 | **No queue, no Redis, no worker process** | Submission completes inside Slack's 3-second ack window. One process total. |
 | **No slash commands** | Entry point is the App Home tab. Do not register commands or add the `commands` scope. |
@@ -669,11 +669,13 @@ Reinstate it — as Bolt global middleware, not per-handler checks — if the ap
 
 `submitForm` runs four steps in order. Do not reorder or skip.
 
+> **§8.1–8.3 were rewritten against the real form.** It is rendered client-side: there is no `<form>` element and no hidden inputs to scrape. The page embeds the whole definition as JSON in a `FSForm.render(...)` call, which `formstack/formPage.ts` parses — field IDs, option values and the session values to echo back all come from there. The body is posted as `multipart/form-data`, matching the renderer. The steps and their order are otherwise unchanged.
+
 ### 8.1 Fetch the form page
 
 GET `form.schema.formUrl` with a 10s timeout. On failure return `{ ok: false, reason: 'network', ... }`.
 
-Parse with cheerio, take the first `<form>`. Resolve the POST target from the form's `action` attribute relative to `formUrl`, falling back to `schema.action`.
+~~Parse with cheerio, take the first `<form>`.~~ Parse the embedded definition. Resolve the POST target from `submitUrl`, falling back to `schema.action`.
 
 ### 8.2 Harvest hidden inputs and verify field presence
 

@@ -9,6 +9,7 @@ import {
 import { dirname } from 'node:path';
 
 import { env } from '../env.js';
+import { logger } from '../logger.js';
 import { ProfileSchema, type Profile } from '../profile.js';
 import { decrypt, encrypt, type Encrypted } from './crypto.js';
 
@@ -51,15 +52,34 @@ function load(): ProfileStore {
 
   const store: ProfileStore = {};
   for (const [userId, encrypted] of Object.entries(parsed)) {
+    // Two failures that look alike and must not be treated alike.
+    let plaintext: string;
     try {
-      store[userId] = ProfileSchema.parse(JSON.parse(decrypt(encrypted)));
+      plaintext = decrypt(encrypted);
     } catch (error) {
+      // The key is wrong. The data is intact and recoverable once the key is
+      // fixed, so refuse to start rather than overwrite it on the next save.
       throw new Error(
         `Could not decrypt the stored profile for ${userId}. ` +
           'PROFILE_ENC_KEY most likely differs from the one used to write this file.',
         { cause: error },
       );
     }
+
+    const profile = ProfileSchema.safeParse(JSON.parse(plaintext));
+    if (!profile.success) {
+      // The data is readable but no longer matches the schema, which happens
+      // whenever a profile field is added or renamed. Dropping it costs the user
+      // thirty seconds of re-entry; throwing would leave the app in a boot loop
+      // for everyone, including the people whose profiles are still valid.
+      logger.warn(
+        { userId, issues: profile.error.issues.map((issue) => issue.path.join('.')) },
+        'discarding a stored profile that no longer matches the schema',
+      );
+      continue;
+    }
+
+    store[userId] = profile.data;
   }
 
   return store;

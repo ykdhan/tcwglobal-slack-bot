@@ -11,10 +11,9 @@ import { DEMO_PROFILE } from './helpers/syntheticForm.js';
 type Block = { type: string; block_id?: string; elements?: unknown[]; text?: { text?: string } };
 
 const REQUEST: PtoRequest = {
-  leaveType: 'Vacation',
   startDate: '2026-08-17',
   endDate: '2026-08-21',
-  totalDays: 5,
+  category: 'Vacation',
 };
 
 function buttons(blocks: unknown[]): Array<{ text: { text: string }; action_id: string }> {
@@ -37,12 +36,12 @@ describe('home view', () => {
   it('shows the saved details when there is a profile', () => {
     const text = JSON.stringify(homeView(DEMO_PROFILE).blocks);
 
-    expect(text).toContain(DEMO_PROFILE.fullName);
+    expect(text).toContain('Gildong Hong');
     expect(text).toContain(DEMO_PROFILE.email);
     expect(text).toContain(DEMO_PROFILE.clientName);
     expect(text).toContain(DEMO_PROFILE.country);
-    expect(text).toContain(DEMO_PROFILE.managerName);
-    expect(text).toContain(DEMO_PROFILE.managerEmail);
+    expect(text).toContain(DEMO_PROFILE.supervisorName);
+    expect(text).toContain(DEMO_PROFILE.supervisorEmail);
   });
 
   it('renders one request button per registered form, plus Edit info', () => {
@@ -71,26 +70,33 @@ describe('profile modal', () => {
 
     expect(blockIds).toEqual(
       expect.arrayContaining([
-        'full_name_block',
+        'first_name_block',
+        'last_name_block',
         'email_block',
         'client_name_block',
         'country_block',
-        'manager_name_block',
-        'manager_email_block',
+        'supervisor_name_block',
+        'supervisor_email_block',
       ]),
     );
   });
 
-  it('offers the countries the form accepts, so a typo cannot be submitted', () => {
+  it('searches the countries the form accepts, rather than listing them', () => {
     const view = profileModal({ meta: { next: 'close' } });
     const country = (view.blocks as Block[]).find(
       (block) => block.block_id === 'country_block',
-    ) as unknown as { element: { type: string; options: { value: string }[] } };
+    ) as unknown as { element: { type: string; action_id: string } };
 
-    expect(country.element.type).toBe('static_select');
-    expect(country.element.options.map((option) => option.value)).toEqual(
-      ptoForm.schema.profile.country.options,
-    );
+    // 189 options do not fit a static select, which Slack caps at 100.
+    expect(ptoForm.schema.profile.country.options!.length).toBeGreaterThan(100);
+    expect(country.element.type).toBe('external_select');
+    expect(country.element.action_id).toBe('country');
+  });
+
+  it('preselects a stored country so it survives a re-open', () => {
+    const view = profileModal({ initial: DEMO_PROFILE, meta: { next: 'close' } });
+
+    expect(JSON.stringify(view.blocks)).toContain(DEMO_PROFILE.country);
   });
 
   it('prefills what it already knows', () => {
@@ -140,14 +146,14 @@ describe('failure message', () => {
   const failure = {
     ok: false as const,
     reason: 'schema' as const,
-    detail: 'Fields not found on the form: field10000009',
+    detail: 'Fields not found on the form: field180756707',
   };
   const blocks = failureBlocks(ptoForm, DEMO_PROFILE, REQUEST, failure);
   const text = JSON.stringify(blocks);
 
   it('states the reason and the raw detail', () => {
     expect(text).toContain('The form structure has changed');
-    expect(text).toContain('field10000009');
+    expect(text).toContain('field180756707');
   });
 
   it('links to the form', () => {
@@ -165,7 +171,7 @@ describe('failure message', () => {
   });
 
   it('tells the operator what to do about it', () => {
-    expect(text).toContain('extract-schema');
+    expect(text).toContain('schema.json');
   });
 
   it('truncates a runaway detail instead of blowing the block limit', () => {

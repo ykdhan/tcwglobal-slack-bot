@@ -23,12 +23,13 @@ export const DemoRequestSchema = z.object({
 export type DemoRequest = z.infer<typeof DemoRequestSchema>;
 
 export const DEMO_PROFILE: Profile = {
-  fullName: 'Hong Gildong',
+  firstName: 'Gildong',
+  lastName: 'Hong',
   email: 'gildong@example.com',
   clientName: 'Acme Corp',
-  country: 'South Korea',
-  managerName: 'Jane Doe',
-  managerEmail: 'jane@acme.com',
+  country: 'South Korea - APAC Region',
+  supervisorName: 'Jane Doe',
+  supervisorEmail: 'jane@acme.com',
 };
 
 export const DEMO_REQUEST: DemoRequest = {
@@ -37,20 +38,28 @@ export const DEMO_REQUEST: DemoRequest = {
   note: 'Second half of the day',
 };
 
+/** Field names, in the `field{id}` shape Formstack uses. */
 export const PROFILE_FIELD_NAMES: Record<keyof Profile, string> = {
-  fullName: 'p_name',
-  email: 'p_email',
-  clientName: 'p_client',
-  country: 'p_country',
-  managerName: 'p_manager',
-  managerEmail: 'p_manager_email',
+  firstName: 'field1001',
+  lastName: 'field1002',
+  email: 'field1003',
+  clientName: 'field1004',
+  country: 'field1005',
+  supervisorName: 'field1006',
+  supervisorEmail: 'field1007',
 };
 
-export const HIDDEN_FIELDS: Record<string, string> = {
+export const TOPIC_FIELD = 'field2001';
+export const WHEN_FIELD = 'field2002';
+export const NOTE_FIELD = 'field2003';
+
+/** Values the page carries that a submission has to echo back verbatim. */
+export const PAGE_HIDDEN: Record<string, string> = {
+  displayTime: '2026-08-05T22:36:23-04:00',
   form: '9999',
-  session_token: 'abc123',
-  // Anti-spam honeypot: present, empty, and it must stay that way.
-  trap: '',
+  viewkey: 'DEMOVIEWKEY',
+  formstackFormSchemaVersion: '4',
+  _submit: '1',
 };
 
 export function demoSchema(overrides: Partial<FormSchema> = {}): FormSchema {
@@ -59,13 +68,14 @@ export function demoSchema(overrides: Partial<FormSchema> = {}): FormSchema {
     action: 'https://example.invalid/submit',
     successMarker: 'Thanks for your submission',
     dateFormat: 'MM/DD/YYYY',
+    constants: { rendererVersion: '7.52.7', emptyOnPurpose: '' },
     profile: Object.fromEntries(
       Object.entries(PROFILE_FIELD_NAMES).map(([key, name]) => [key, { name }]),
     ) as FormSchema['profile'],
     request: {
-      topic: { name: 'q_topic' },
-      whenDate: { name: 'q_when', type: 'date' },
-      note: { name: 'q_note', optional: true },
+      topic: { name: TOPIC_FIELD },
+      whenDate: { name: WHEN_FIELD, type: 'date' },
+      note: { name: NOTE_FIELD, optional: true },
     },
     ...overrides,
   };
@@ -74,7 +84,7 @@ export function demoSchema(overrides: Partial<FormSchema> = {}): FormSchema {
 export function demoForm(schema: FormSchema = demoSchema()): FormDefinition<DemoRequest> {
   return {
     id: 'demo',
-    label: 'Demo request',
+    label: 'demo request',
     schema,
     requestSchema: DemoRequestSchema,
     buildModal: () => ({ type: 'modal', title: { type: 'plain_text', text: 'Demo' }, blocks: [] }),
@@ -90,36 +100,52 @@ export function demoForm(schema: FormSchema = demoSchema()): FormDefinition<Demo
   };
 }
 
-/** Markup for the synthetic form. `omit` drops fields, to simulate a renamed one. */
-export function demoFormHtml(options: { omit?: string[]; action?: string } = {}): string {
+/**
+ * A page shaped like the real one: no `<form>` element, the definition embedded
+ * in a `FSForm.render(...)` call. `omit` drops fields, to simulate a rename.
+ */
+export function demoFormHtml(options: { omit?: string[]; submitUrl?: string } = {}): string {
   const omit = new Set(options.omit ?? []);
-  const action = options.action ?? '/submit';
 
-  const hidden = Object.entries(HIDDEN_FIELDS)
-    .map(([name, value]) => `<input type="hidden" name="${name}" value="${value}" />`)
-    .join('\n      ');
+  const fieldNames = [
+    ...Object.values(PROFILE_FIELD_NAMES),
+    TOPIC_FIELD,
+    WHEN_FIELD,
+    NOTE_FIELD,
+  ].filter((name) => !omit.has(name));
 
-  const visible = [...Object.values(PROFILE_FIELD_NAMES), 'q_topic', 'q_when', 'q_note']
-    .filter((name) => !omit.has(name))
-    .map((name) => `<input type="text" name="${name}" value="" />`)
-    .join('\n      ');
+  const definition = {
+    error: null,
+    form: {
+      id: Number(PAGE_HIDDEN.form),
+      version: PAGE_HIDDEN.formstackFormSchemaVersion,
+      viewKey: PAGE_HIDDEN.viewkey,
+      // Omitted unless a test sets it, so the engine falls back to the target
+      // the schema declares — which tests point at the local server.
+      ...(options.submitUrl ? { submitUrl: options.submitUrl } : {}),
+      meta: { hiddenSubmitFields: [{ key: 'displayTime', value: PAGE_HIDDEN.displayTime }] },
+      sections: [
+        // The definition keys fields by bare id; the engine prefixes them.
+        { fields: fieldNames.map((name) => ({ general: { id: name.replace(/^field/, '') } })) },
+      ],
+    },
+  };
 
   return `<!doctype html>
-<html>
-  <body>
-    <form action="${action}" method="post">
-      ${hidden}
-      ${visible}
-      <input type="submit" value="Send" />
-    </form>
-  </body>
-</html>`;
+<html><body>
+<div id="fsform-container"></div>
+<script src="https://static.example.invalid/renderer.js"></script>
+<script>
+  FSForm.render({"id":${PAGE_HIDDEN.form},"viewKey":"${PAGE_HIDDEN.viewkey}"},
+    { formResponse: ${JSON.stringify(definition)} });
+</script>
+</body></html>`;
 }
 
 export interface FormServer {
   url: string;
-  /** The body of the most recent POST, parsed. */
-  lastBody(): URLSearchParams | null;
+  /** The fields of the most recent POST, parsed. */
+  lastBody(): Map<string, string> | null;
   postCount(): number;
   /** Replace the page served on GET. */
   setPage(html: string): void;
@@ -130,13 +156,33 @@ export interface FormServer {
   close(): Promise<void>;
 }
 
+/** Parse a multipart/form-data body into plain fields. */
+function parseMultipart(raw: Buffer, contentType: string): Map<string, string> {
+  const fields = new Map<string, string>();
+  const boundary = /boundary=(?:"([^"]+)"|([^;]+))/.exec(contentType);
+  if (!boundary) return fields;
+
+  const delimiter = `--${boundary[1] ?? boundary[2]}`;
+  for (const part of raw.toString('utf8').split(delimiter)) {
+    const match = /name="([^"]*)"/.exec(part);
+    if (!match?.[1]) continue;
+
+    const headerEnd = part.indexOf('\r\n\r\n');
+    if (headerEnd === -1) continue;
+
+    fields.set(match[1], part.slice(headerEnd + 4).replace(/\r\n$/, ''));
+  }
+
+  return fields;
+}
+
 /** A local stand-in for the form host. Nothing in the test suite touches the network. */
 export async function startFormServer(initialPage = demoFormHtml()): Promise<FormServer> {
   let page = initialPage;
   let responseHtml = 'Thanks for your submission';
   let responseStatus = 200;
   let unreachable = false;
-  let lastBody: URLSearchParams | null = null;
+  let lastBody: Map<string, string> | null = null;
   let postCount = 0;
 
   const server: Server = createServer((req, res) => {
@@ -150,7 +196,7 @@ export async function startFormServer(initialPage = demoFormHtml()): Promise<For
       const chunks: Buffer[] = [];
       req.on('data', (chunk: Buffer) => chunks.push(chunk));
       req.on('end', () => {
-        lastBody = new URLSearchParams(Buffer.concat(chunks).toString('utf8'));
+        lastBody = parseMultipart(Buffer.concat(chunks), req.headers['content-type'] ?? '');
         res.writeHead(responseStatus, { 'Content-Type': 'text/html' });
         res.end(responseHtml);
       });

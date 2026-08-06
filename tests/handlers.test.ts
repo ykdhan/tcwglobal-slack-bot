@@ -12,6 +12,19 @@ const FIXTURE = readFileSync(new URL('./fixtures/pto-form.html', import.meta.url
 const USER = 'U01ABCDEF';
 
 /**
+ * The snapshot, with the real submit endpoint swapped for the local server.
+ *
+ * The engine posts where the page says to, and the page says to post to the
+ * live form. Without this every submission test would file a real request.
+ */
+function localFixture(): string {
+  return FIXTURE.replace(
+    /https:\\?\/\\?\/targetcw\.formstack\.com\\?\/forms\\?\/index\.php/g,
+    server.url,
+  );
+}
+
+/**
  * The whole Slack flow, without Slack.
  *
  * Bolt is replaced by a recorder that captures every registration, so each
@@ -27,6 +40,7 @@ class RecordingApp {
   events = new Map<string, Handler>();
   actions = new Map<string, Handler>();
   viewHandlers = new Map<string, Handler>();
+  optionHandlers = new Map<string, Handler>();
 
   use(fn: Handler) {
     this.middleware.push(fn);
@@ -39,6 +53,9 @@ class RecordingApp {
   }
   view(id: string, fn: Handler) {
     this.viewHandlers.set(id, fn);
+  }
+  options(id: string, fn: Handler) {
+    this.optionHandlers.set(id, fn);
   }
 }
 
@@ -60,21 +77,25 @@ function fakeClient() {
 }
 
 const PROFILE_STATE = {
-  full_name_block: { fullName: { type: 'plain_text_input', value: 'Hong Gildong' } },
+  first_name_block: { firstName: { type: 'plain_text_input', value: 'Gildong' } },
+  last_name_block: { lastName: { type: 'plain_text_input', value: 'Hong' } },
   email_block: { email: { type: 'plain_text_input', value: 'gildong@example.com' } },
   client_name_block: { clientName: { type: 'plain_text_input', value: 'Acme Corp' } },
-  country_block: { country: { type: 'static_select', selected_option: { value: 'South Korea' } } },
-  manager_name_block: { managerName: { type: 'plain_text_input', value: 'Jane Doe' } },
-  manager_email_block: { managerEmail: { type: 'plain_text_input', value: 'jane@acme.com' } },
+  country_block: {
+    country: {
+      type: 'external_select',
+      selected_option: { value: 'South Korea - APAC Region' },
+    },
+  },
+  supervisor_name_block: { supervisorName: { type: 'plain_text_input', value: 'Jane Doe' } },
+  supervisor_email_block: { supervisorEmail: { type: 'plain_text_input', value: 'jane@acme.com' } },
 };
 
 const REQUEST_STATE = {
-  leave_type_block: {
-    leaveType: { type: 'radio_buttons', selected_option: { value: 'Vacation' } },
-  },
   start_date_block: { startDate: { type: 'datepicker', selected_date: '2026-08-17' } },
   end_date_block: { endDate: { type: 'datepicker', selected_date: '2026-08-21' } },
-  total_days_block: { totalDays: { type: 'number_input', value: '5' } },
+  category_block: { category: { type: 'radio_buttons', selected_option: { value: 'Vacation' } } },
+  other_category_block: { otherCategory: { type: 'plain_text_input', value: null } },
   comments_block: { comments: { type: 'plain_text_input', value: 'Family trip' } },
 };
 
@@ -86,7 +107,7 @@ let app: RecordingApp;
 let client: ReturnType<typeof fakeClient>;
 let modules: {
   registerHandlers: (app: never) => void;
-  ptoForm: { schema: { formUrl: string; successMarker: string } };
+  ptoForm: { label: string; schema: { formUrl: string; action: string; successMarker: string } };
   registry: { forms: any[] };
 };
 
@@ -94,7 +115,7 @@ beforeEach(async () => {
   dir = mkdtempSync(join(tmpdir(), 'tcwglobal-handlers-'));
   process.env.DATA_FILE = join(dir, 'profiles.json');
 
-  server = await startFormServer(FIXTURE);
+  server = await startFormServer();
 
   vi.resetModules();
   const [{ registerHandlers }, { ptoForm }, registry] = await Promise.all([
@@ -104,9 +125,12 @@ beforeEach(async () => {
   ]);
   modules = { registerHandlers, ptoForm, registry };
 
-  // Point the real form definition at a local copy of the form. Nothing in the
-  // suite is allowed to touch the live form.
+  // Point the real form definition at a local copy of the form. The snapshot
+  // advertises the real submit endpoint, so that is rewritten too — nothing in
+  // the suite is allowed to reach the live form.
   ptoForm.schema.formUrl = server.url;
+  ptoForm.schema.action = server.url;
+  server.setPage(localFixture());
   server.setResponse(`<html><body>${ptoForm.schema.successMarker}</body></html>`);
 
   app = new RecordingApp();
@@ -168,7 +192,10 @@ describe('profile setup', () => {
     const view = client.views.open.mock.calls[0]![0].view;
     expect(view.callback_id).toBe('profile_modal');
     // Name and email come from Slack, so first-time setup is mostly filled in.
-    expect(JSON.stringify(view)).toContain('Hong Gildong');
+    // real_name is split on the first space when Slack has no separate fields.
+    const rendered = JSON.stringify(view);
+    expect(rendered).toContain('"initial_value":"Hong"');
+    expect(rendered).toContain('"initial_value":"Gildong"');
     expect(JSON.parse(view.private_metadata)).toEqual({ next: 'open_request', formId: 'pto' });
   });
 
@@ -178,7 +205,7 @@ describe('profile setup', () => {
     expect(ack).toHaveBeenCalledWith({ response_action: 'clear' });
     expect(client.views.publish).toHaveBeenCalledTimes(1);
     expect(JSON.stringify(client.views.publish.mock.calls[0]![0].view)).toContain(
-      'New PTO request',
+      `New ${modules.ptoForm.label}`,
     );
   });
 
@@ -308,11 +335,13 @@ describe('request submission', () => {
     expect(server.postCount()).toBe(1);
 
     const body = server.lastBody();
-    expect(body?.get('field10000001')).toBe('Hong Gildong');
-    expect(body?.get('field10000008')).toBe('Vacation');
-    expect(body?.get('field10000009')).toBe('08/17/2026');
-    expect(body?.get('field10000010')).toBe('08/21/2026');
-    expect(body?.get('field10000011')).toBe('5');
+    expect(body?.get('field180619082-first')).toBe('Gildong');
+    expect(body?.get('field180619082-last')).toBe('Hong');
+    expect(body?.get('field180619088')).toBe('South Korea - APAC Region');
+    expect(body?.get('field180757964')).toBe('Vacation');
+    expect(body?.get('field180756707M')).toBe('Aug');
+    expect(body?.get('field180756707D')).toBe('17');
+    expect(body?.get('field180756796D')).toBe('21');
 
     const dm = client.chat.postMessage.mock.calls[0]![0];
     expect(dm.channel).toBe(USER);
@@ -336,14 +365,14 @@ describe('request submission', () => {
 
   it('keeps the modal open when the form rejects the submission', async () => {
     await saveProfileThroughModal();
-    server.setResponse('<div class="fsError">Total days must be a number.</div>');
+    server.setResponse('<div class="fsError">Enter a valid date.</div>');
 
     const ack = await submit();
 
     expect(ack).toHaveBeenCalledWith({
       response_action: 'errors',
       errors: expect.objectContaining({
-        leave_type_block: expect.stringContaining('Total days must be a number.'),
+        start_date_block: expect.stringContaining('Enter a valid date.'),
       }),
     });
     expect(client.chat.postMessage).not.toHaveBeenCalled();
@@ -351,14 +380,15 @@ describe('request submission', () => {
 
   it('DMs the manual-submission fallback when the form has changed', async () => {
     await saveProfileThroughModal();
-    server.setPage(FIXTURE.replace('name="field10000009"', 'name="field99999999"'));
+    // Rename the start date field, as republishing the form would.
+    server.setPage(localFixture().replace('"id":"180756707"', '"id":"999999999"'));
 
     const ack = await submit();
 
     expect(ack).toHaveBeenCalledWith();
     const dm = JSON.stringify(client.chat.postMessage.mock.calls[0]![0].blocks);
     expect(dm).toContain('The form structure has changed');
-    expect(dm).toContain('field10000009');
+    expect(dm).toContain('field180756707');
     // Everything needed to submit by hand, including the saved details.
     expect(dm).toContain('Acme Corp');
     expect(dm).toContain('Vacation');
@@ -413,6 +443,39 @@ describe('adding a second form', () => {
     } finally {
       modules.registry.forms.pop();
     }
+  });
+});
+
+describe('country lookup', () => {
+  async function lookup(value: string) {
+    const ack = vi.fn().mockResolvedValue(undefined);
+    await app.optionHandlers.get('country')!({ options: { value }, ack });
+    return ack.mock.calls[0]![0].options as Array<{ value: string; text: { text: string } }>;
+  }
+
+  it('finds a country by any part of its name', async () => {
+    const results = await lookup('korea');
+
+    expect(results.map((option) => option.value)).toContain('South Korea - APAC Region');
+  });
+
+  it('matches on region too', async () => {
+    const results = await lookup('LATAM');
+
+    expect(results.length).toBeGreaterThan(1);
+    expect(results.every((option) => option.value.includes('LATAM'))).toBe(true);
+  });
+
+  it('never returns more than Slack accepts', async () => {
+    // The form offers 189 countries and Slack takes 100, which is the whole
+    // reason this is an external select rather than a static one.
+    const results = await lookup('');
+
+    expect(results).toHaveLength(100);
+  });
+
+  it('returns nothing for a country the form does not offer', async () => {
+    expect(await lookup('Atlantis')).toEqual([]);
   });
 });
 

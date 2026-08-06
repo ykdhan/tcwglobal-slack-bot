@@ -14,7 +14,7 @@ import { ProfileSchema, type Profile } from '../profile.js';
 import { forgetProfile, getProfile, saveProfile } from '../store/profiles.js';
 import { homeView } from './home.js';
 import { failureBlocks, successBlocks } from './messages.js';
-import { parseProfileMeta, profileModal } from './profileModal.js';
+import { matchCountries, parseProfileMeta, profileModal } from './profileModal.js';
 import { flattenValues, toBlockErrors } from './values.js';
 
 const INLINE_DETAIL_LIMIT = 140;
@@ -47,8 +47,17 @@ async function prefillFromSlack(
   try {
     const result = await client.users.info({ user: userId });
     const slackProfile = result.user?.profile;
+
+    // Slack exposes first and last name separately, but they are often empty
+    // where real_name is not; splitting on the first space is the usual reading
+    // and the user can correct it before saving either way.
+    const [first = '', ...rest] = (slackProfile?.real_name ?? '').trim().split(/\s+/);
+    const firstName = slackProfile?.first_name || first;
+    const lastName = slackProfile?.last_name || rest.join(' ');
+
     return {
-      ...(slackProfile?.real_name ? { fullName: slackProfile.real_name } : {}),
+      ...(firstName ? { firstName } : {}),
+      ...(lastName ? { lastName } : {}),
       ...(slackProfile?.email ? { email: slackProfile.email } : {}),
     };
   } catch (error) {
@@ -150,6 +159,18 @@ export function registerHandlers(app: App): void {
   app.event('app_home_opened', async ({ event, client }) => {
     if (event.tab !== 'home') return;
     await client.views.publish({ user_id: event.user, view: homeView(getProfile(event.user)) });
+  });
+
+  // The country picker is an external select because the form offers 189
+  // options and a Slack static select holds 100. Socket Mode delivers these
+  // lookups over the same connection, so no public URL is involved.
+  app.options('country', async ({ options, ack }) => {
+    await ack({
+      options: matchCountries(options.value ?? '').map((country) => ({
+        text: { type: 'plain_text', text: country },
+        value: country,
+      })),
+    });
   });
 
   app.action('open_profile', async ({ ack, body, client }) => {

@@ -4,8 +4,11 @@ import { submitForm, withRetry, type SubmitResult } from '../src/formstack/engin
 import {
   DEMO_PROFILE,
   DEMO_REQUEST,
-  HIDDEN_FIELDS,
+  NOTE_FIELD,
+  PAGE_HIDDEN,
   PROFILE_FIELD_NAMES,
+  TOPIC_FIELD,
+  WHEN_FIELD,
   demoForm,
   demoFormHtml,
   demoSchema,
@@ -17,7 +20,7 @@ let server: FormServer;
 
 /** The synthetic form, pointed at the local server. */
 function formAt(overrides: Parameters<typeof demoSchema>[0] = {}) {
-  return demoForm(demoSchema({ formUrl: server.url, ...overrides }));
+  return demoForm(demoSchema({ formUrl: server.url, action: server.url, ...overrides }));
 }
 
 beforeEach(async () => {
@@ -35,16 +38,17 @@ describe('submitForm', () => {
     expect(result).toEqual({ ok: true });
   });
 
-  it('copies hidden inputs verbatim, empty values included', async () => {
+  it('echoes back the values the page carries, empty ones included', async () => {
     await submitForm(formAt(), DEMO_PROFILE, DEMO_REQUEST);
     const body = server.lastBody();
 
-    for (const [name, value] of Object.entries(HIDDEN_FIELDS)) {
+    for (const [name, value] of Object.entries(PAGE_HIDDEN)) {
       expect(body?.get(name)).toBe(value);
     }
-    // The honeypot is present and empty, not dropped and not filled in.
-    expect(body?.has('trap')).toBe(true);
-    expect(body?.get('trap')).toBe('');
+    // Declared constants ride along, including the deliberately empty one.
+    expect(body?.get('rendererVersion')).toBe('7.52.7');
+    expect(body?.has('emptyOnPurpose')).toBe(true);
+    expect(body?.get('emptyOnPurpose')).toBe('');
   });
 
   it('sends every mapped profile field', async () => {
@@ -60,25 +64,25 @@ describe('submitForm', () => {
     await submitForm(formAt(), DEMO_PROFILE, DEMO_REQUEST);
     const body = server.lastBody();
 
-    expect(body?.get('q_topic')).toBe('Quarterly review');
-    expect(body?.get('q_when')).toBe('08/17/2026');
-    expect(body?.get('q_note')).toBe('Second half of the day');
+    expect(body?.get(TOPIC_FIELD)).toBe('Quarterly review');
+    expect(body?.get(WHEN_FIELD)).toBe('08/17/2026');
+    expect(body?.get(NOTE_FIELD)).toBe('Second half of the day');
   });
 
   it('honours the form-level date format', async () => {
     await submitForm(formAt({ dateFormat: 'DD/MM/YYYY' }), DEMO_PROFILE, DEMO_REQUEST);
 
-    expect(server.lastBody()?.get('q_when')).toBe('17/08/2026');
+    expect(server.lastBody()?.get(WHEN_FIELD)).toBe('17/08/2026');
   });
 
   it('omits an optional field rather than sending it empty', async () => {
     await submitForm(formAt(), DEMO_PROFILE, { ...DEMO_REQUEST, note: undefined });
 
-    expect(server.lastBody()?.has('q_note')).toBe(false);
+    expect(server.lastBody()?.has(NOTE_FIELD)).toBe(false);
   });
 
-  it('posts to the action resolved from the page, not the configured fallback', async () => {
-    server.setPage(demoFormHtml({ action: '/elsewhere' }));
+  it('posts to the target the page advertises', async () => {
+    server.setPage(demoFormHtml({ submitUrl: `${server.url}/elsewhere` }));
 
     const result = await submitForm(formAt(), DEMO_PROFILE, DEMO_REQUEST);
 
@@ -87,48 +91,47 @@ describe('submitForm', () => {
   });
 
   it('fails with reason schema when a mapped field is missing from the form', async () => {
-    server.setPage(demoFormHtml({ omit: ['q_when'] }));
+    server.setPage(demoFormHtml({ omit: [WHEN_FIELD] }));
 
     const result = await submitForm(formAt(), DEMO_PROFILE, DEMO_REQUEST);
 
     expect(result).toMatchObject({ ok: false, reason: 'schema' });
-    expect((result as { detail: string }).detail).toContain('q_when');
+    expect((result as { detail: string }).detail).toContain(WHEN_FIELD);
     // Nothing is submitted once the form is known to have changed.
     expect(server.postCount()).toBe(0);
   });
 
   it('fails with reason schema when a required profile field is missing', async () => {
-    server.setPage(demoFormHtml({ omit: ['p_email'] }));
+    server.setPage(demoFormHtml({ omit: [PROFILE_FIELD_NAMES.email] }));
 
     const result = await submitForm(formAt(), DEMO_PROFILE, DEMO_REQUEST);
 
     expect(result).toMatchObject({ ok: false, reason: 'schema' });
-    expect((result as { detail: string }).detail).toContain('p_email');
+    expect((result as { detail: string }).detail).toContain(PROFILE_FIELD_NAMES.email);
   });
 
   it('does not require an optional field to be present on the form', async () => {
-    server.setPage(demoFormHtml({ omit: ['q_note'] }));
+    server.setPage(demoFormHtml({ omit: [NOTE_FIELD] }));
 
     const result = await submitForm(formAt(), DEMO_PROFILE, DEMO_REQUEST);
 
     expect(result).toEqual({ ok: true });
   });
 
-  it('expands split date fields when checking field presence', async () => {
-    server.setPage(
-      demoFormHtml({ omit: ['q_when'] }).replace(
-        '<input type="submit"',
-        '<input type="text" name="q_when-M" /><input type="text" name="q_when-D" />' +
-          '<input type="text" name="q_when-Y" /><input type="submit"',
-      ),
-    );
-
+  it('checks presence against the field an input belongs to, not the input', async () => {
+    // A name split across two inputs is one field on the form.
     const result = await submitForm(
       formAt({
-        request: {
-          topic: { name: 'q_topic' },
-          whenDate: { name: 'q_when', type: 'date', parts: true },
-          note: { name: 'q_note', optional: true },
+        profile: {
+          ...demoSchema().profile,
+          firstName: {
+            name: `${PROFILE_FIELD_NAMES.firstName}-first`,
+            base: PROFILE_FIELD_NAMES.firstName,
+          },
+          lastName: {
+            name: `${PROFILE_FIELD_NAMES.firstName}-last`,
+            base: PROFILE_FIELD_NAMES.firstName,
+          },
         },
       }),
       DEMO_PROFILE,
@@ -136,9 +139,40 @@ describe('submitForm', () => {
     );
 
     expect(result).toEqual({ ok: true });
-    expect(server.lastBody()?.get('q_when-M')).toBe('08');
-    expect(server.lastBody()?.get('q_when-D')).toBe('17');
-    expect(server.lastBody()?.get('q_when-Y')).toBe('2026');
+    expect(server.lastBody()?.get(`${PROFILE_FIELD_NAMES.firstName}-first`)).toBe('Gildong');
+    expect(server.lastBody()?.get(`${PROFILE_FIELD_NAMES.firstName}-last`)).toBe('Hong');
+  });
+
+  it('splits a Formstack datetime field into its parts', async () => {
+    const result = await submitForm(
+      formAt({
+        request: {
+          topic: { name: TOPIC_FIELD },
+          whenDate: { name: WHEN_FIELD, type: 'date', parts: 'datetimeParts' },
+          note: { name: NOTE_FIELD, optional: true },
+        },
+      }),
+      DEMO_PROFILE,
+      DEMO_REQUEST,
+    );
+
+    expect(result).toEqual({ ok: true });
+    const body = server.lastBody();
+    expect(body?.get(`${WHEN_FIELD}M`)).toBe('Aug');
+    expect(body?.get(`${WHEN_FIELD}D`)).toBe('17');
+    expect(body?.get(`${WHEN_FIELD}Y`)).toBe('2026');
+    expect(body?.get(`${WHEN_FIELD}A`)).toBe('AM');
+    // The base name is never posted on its own.
+    expect(body?.has(WHEN_FIELD)).toBe(false);
+  });
+
+  it('fails with reason schema when the page carries no form definition', async () => {
+    server.setPage('<html><body>Down for maintenance</body></html>');
+
+    const result = await submitForm(formAt(), DEMO_PROFILE, DEMO_REQUEST);
+
+    expect(result).toMatchObject({ ok: false, reason: 'schema' });
+    expect(server.postCount()).toBe(0);
   });
 
   it('fails with reason rejected when the response carries validation errors', async () => {
@@ -156,7 +190,7 @@ describe('submitForm', () => {
   it('collects fsValidationError nodes too', async () => {
     server.setResponse(
       '<span class="fsValidationError">Enter a valid date.</span>' +
-        '<span class="fsError">Total days must be a number.</span>',
+        '<span class="fsError">Category is required.</span>',
       200,
     );
 
@@ -164,7 +198,7 @@ describe('submitForm', () => {
 
     expect(result).toMatchObject({ ok: false, reason: 'rejected' });
     expect((result as { detail: string }).detail).toContain('Enter a valid date.');
-    expect((result as { detail: string }).detail).toContain('Total days must be a number.');
+    expect((result as { detail: string }).detail).toContain('Category is required.');
   });
 
   it('fails with reason unconfirmed when the response has neither marker nor errors', async () => {
@@ -195,20 +229,11 @@ describe('submitForm', () => {
     expect(result).toMatchObject({ ok: false, reason: 'network' });
   });
 
-  it('fails with reason network on a non-200 form page', async () => {
-    const form = formAt({ formUrl: `${server.url}` });
-    server.setPage('');
-    // A page with no form at all is a structural problem, not a transport one.
-    const result = await submitForm(form, DEMO_PROFILE, DEMO_REQUEST);
-
-    expect(result).toMatchObject({ ok: false, reason: 'schema' });
-  });
-
-  it('fails with reason schema when the mapping names a field the form definition did not supply', async () => {
+  it('fails with reason schema when the mapping names a field the definition did not supply', async () => {
     const form = demoForm(
       demoSchema({
         formUrl: server.url,
-        request: { topic: { name: 'q_topic' }, whenDate: { name: 'q_when', type: 'date' } },
+        request: { topic: { name: TOPIC_FIELD }, whenDate: { name: WHEN_FIELD, type: 'date' } },
       }),
     );
 
@@ -263,7 +288,7 @@ describe('withRetry', () => {
     const fn = vi.fn<() => Promise<SubmitResult>>().mockResolvedValue({
       ok: false,
       reason: 'schema',
-      detail: 'Fields not found on the form: q_when',
+      detail: 'Fields not found on the form',
     });
 
     await withRetry(fn, noDelay);

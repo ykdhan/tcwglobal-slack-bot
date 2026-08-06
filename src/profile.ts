@@ -9,32 +9,45 @@ import { z } from 'zod';
  * though they use different field IDs for the same person's name.
  */
 export const ProfileSchema = z.object({
-  fullName: z.string().min(1),
+  firstName: z.string().min(1),
+  lastName: z.string().min(1),
   email: z.string().email(),
   clientName: z.string().min(1),
   country: z.string().min(1),
-  managerName: z.string().min(1),
-  managerEmail: z.string().email(),
+  supervisorName: z.string().min(1),
+  supervisorEmail: z.string().email(),
 });
 
 export type Profile = z.infer<typeof ProfileSchema>;
 
 /** Profile keys in the order they are rendered in modals and copy-paste blocks. */
 export const PROFILE_KEYS = [
-  'fullName',
+  'firstName',
+  'lastName',
   'email',
   'clientName',
   'country',
-  'managerName',
-  'managerEmail',
+  'supervisorName',
+  'supervisorEmail',
 ] as const satisfies readonly (keyof Profile)[];
 
-/** Human-readable labels, used in the profile modal and the manual-submission block. */
+/**
+ * Human-readable labels.
+ *
+ * These match the wording on the form — "Supervisor", not "Manager" — so that a
+ * user comparing the modal against the form sees the same words in both.
+ */
 export const PROFILE_LABELS: Record<keyof Profile, string> = {
-  fullName: 'Full name',
+  firstName: 'First name',
+  lastName: 'Last name',
   email: 'Email',
-  clientName: 'Client',
-  country: 'Country',
-  managerName: 'Manager name',
-  managerEmail: 'Manager email',
+  clientName: 'Client name',
+  country: 'Work country',
+  supervisorName: 'Supervisor name',
+  supervisorEmail: 'Supervisor email',
 };
+
+/** Display name, for the Home tab and modal headers. */
+export function displayName(profile: Profile): string {
+  return `${profile.firstName} ${profile.lastName}`;
+}
