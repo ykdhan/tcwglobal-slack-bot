@@ -1,0 +1,142 @@
+<!doctype html>
+<!--
+  Stand-in snapshot of the International PTO form.
+
+  This is NOT the real form. It was written by hand so that the engine, the
+  schema loader and the PTO form definition could be built and tested before the
+  real page was inspected. Its field names, option values and markup mirror the
+  shape of a Formstack form, not its contents.
+
+  Replace this file with a real snapshot once the operator has run the field
+  survey described in docs/IMPLEMENTATION.md section 3:
+
+      curl -s <form url> > tests/fixtures/pto-form.html
+
+  and update src/forms/pto/schema.json to match.
+-->
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <title>International PTO Request</title>
+  </head>
+  <body>
+    <div class="fsBody">
+      <form
+        id="fsForm1000000"
+        class="fsForm"
+        action="/forms/index.php"
+        method="post"
+        enctype="multipart/form-data"
+      >
+        <!-- Session and routing values. Echoed back verbatim on submit. -->
+        <input type="hidden" name="form" value="1000000" />
+        <input type="hidden" name="viewkey" value="ABCdefGHIjkl" />
+        <input type="hidden" name="_submit" value="1" />
+        <input type="hidden" name="incomplete" value="0" />
+        <input type="hidden" name="form_token" value="7f3a91c4d2e58b60" />
+        <!-- Anti-spam honeypot. Must be submitted empty. -->
+        <input type="hidden" name="fsSpamTrap" value="" />
+
+        <div class="fsRow">
+          <label for="field10000001">Full Name</label>
+          <input type="text" id="field10000001" name="field10000001" value="" required />
+        </div>
+
+        <div class="fsRow">
+          <label for="field10000002">Email Address</label>
+          <input type="email" id="field10000002" name="field10000002" value="" required />
+        </div>
+
+        <div class="fsRow">
+          <label for="field10000003">Employee ID</label>
+          <input type="text" id="field10000003" name="field10000003" value="" required />
+        </div>
+
+        <div class="fsRow">
+          <label for="field10000004">Client Name</label>
+          <input type="text" id="field10000004" name="field10000004" value="" required />
+        </div>
+
+        <div class="fsRow">
+          <label for="field10000005">Country of Employment</label>
+          <select id="field10000005" name="field10000005" required>
+            <option value="">Please select</option>
+            <option value="Australia">Australia</option>
+            <option value="Canada">Canada</option>
+            <option value="Germany">Germany</option>
+            <option value="India">India</option>
+            <option value="Japan">Japan</option>
+            <option value="Mexico">Mexico</option>
+            <option value="Netherlands">Netherlands</option>
+            <option value="Philippines">Philippines</option>
+            <option value="Singapore">Singapore</option>
+            <option value="South Korea">South Korea</option>
+            <option value="Spain">Spain</option>
+            <option value="United Kingdom">United Kingdom</option>
+            <option value="United States">United States</option>
+          </select>
+        </div>
+
+        <div class="fsRow">
+          <label for="field10000006">Manager Name</label>
+          <input type="text" id="field10000006" name="field10000006" value="" required />
+        </div>
+
+        <div class="fsRow">
+          <label for="field10000007">Manager Email</label>
+          <input type="email" id="field10000007" name="field10000007" value="" required />
+        </div>
+
+        <div class="fsRow">
+          <label>Type of Leave</label>
+          <input type="radio" id="field10000008_1" name="field10000008" value="Vacation" />
+          <label for="field10000008_1">Vacation</label>
+          <input type="radio" id="field10000008_2" name="field10000008" value="Sick Leave" />
+          <label for="field10000008_2">Sick Leave</label>
+          <input type="radio" id="field10000008_3" name="field10000008" value="Personal Leave" />
+          <label for="field10000008_3">Personal Leave</label>
+          <input type="radio" id="field10000008_4" name="field10000008" value="Bereavement" />
+          <label for="field10000008_4">Bereavement</label>
+          <input type="radio" id="field10000008_5" name="field10000008" value="Unpaid Leave" />
+          <label for="field10000008_5">Unpaid Leave</label>
+        </div>
+
+        <div class="fsRow">
+          <label for="field10000009">First Day of Leave</label>
+          <input
+            type="text"
+            id="field10000009"
+            name="field10000009"
+            value=""
+            placeholder="MM/DD/YYYY"
+            required
+          />
+        </div>
+
+        <div class="fsRow">
+          <label for="field10000010">Last Day of Leave</label>
+          <input
+            type="text"
+            id="field10000010"
+            name="field10000010"
+            value=""
+            placeholder="MM/DD/YYYY"
+            required
+          />
+        </div>
+
+        <div class="fsRow">
+          <label for="field10000011">Total Days Requested</label>
+          <input type="text" id="field10000011" name="field10000011" value="" required />
+        </div>
+
+        <div class="fsRow">
+          <label for="field10000012">Additional Comments</label>
+          <textarea id="field10000012" name="field10000012"></textarea>
+        </div>
+
+        <input type="submit" value="Submit Form" />
+      </form>
+    </div>
+  </body>
+</html>

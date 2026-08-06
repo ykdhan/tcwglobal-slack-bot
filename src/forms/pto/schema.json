@@ -1,0 +1,46 @@
+{
+  "$comment": "PLACEHOLDER — NOT YET VERIFIED AGAINST THE REAL FORM. Every value below was read off tests/fixtures/pto-form.html, which is a hand-written stand-in. Before the first real submission, run `pnpm extract-schema` against the live form and confirm the four things listed in docs/IMPLEMENTATION.md section 3: field names, date format, option values, and the success marker. See README, 'Before first use'.",
+
+  "formUrl": "https://targetcw.formstack.com/forms/international_pto",
+  "action": "https://targetcw.formstack.com/forms/index.php",
+  "successMarker": "Thank you for your submission",
+  "dateFormat": "MM/DD/YYYY",
+
+  "profile": {
+    "fullName": { "name": "field10000001" },
+    "email": { "name": "field10000002" },
+    "employeeId": { "name": "field10000003" },
+    "clientName": { "name": "field10000004" },
+    "country": {
+      "name": "field10000005",
+      "options": [
+        "Australia",
+        "Canada",
+        "Germany",
+        "India",
+        "Japan",
+        "Mexico",
+        "Netherlands",
+        "Philippines",
+        "Singapore",
+        "South Korea",
+        "Spain",
+        "United Kingdom",
+        "United States"
+      ]
+    },
+    "managerName": { "name": "field10000006" },
+    "managerEmail": { "name": "field10000007" }
+  },
+
+  "request": {
+    "leaveType": {
+      "name": "field10000008",
+      "options": ["Vacation", "Sick Leave", "Personal Leave", "Bereavement", "Unpaid Leave"]
+    },
+    "startDate": { "name": "field10000009", "type": "date" },
+    "endDate": { "name": "field10000010", "type": "date" },
+    "totalDays": { "name": "field10000011" },
+    "comments": { "name": "field10000012", "optional": true }
+  }
+}

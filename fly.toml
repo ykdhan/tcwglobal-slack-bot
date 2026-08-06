@@ -1,0 +1,22 @@
+app = "tcwglobal-slack-bot"
+primary_region = "nrt"
+
+[build]
+  dockerfile = "Dockerfile"
+
+[env]
+  NODE_ENV = "production"
+  DATA_FILE = "/data/profiles.json"
+  LOG_LEVEL = "info"
+  TZ = "Asia/Seoul"
+
+[mounts]
+  source = "pto_data"
+  destination = "/data"
+
+# No [[services]] block: Socket Mode opens an outbound WebSocket, so the app
+# accepts no inbound traffic and needs no ports, no domain and no certificate.
+
+[[vm]]
+  size = "shared-cpu-1x"
+  memory = "256mb"

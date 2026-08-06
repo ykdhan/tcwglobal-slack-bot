@@ -1,0 +1,38 @@
+{
+  "name": "tcwglobal-slack-bot",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "dev": "tsx watch --env-file=.env src/app.ts",
+    "build": "tsc",
+    "start": "node dist/app.js",
+    "test": "vitest run",
+    "typecheck": "tsc --noEmit -p tsconfig.check.json",
+    "lint": "eslint src scripts tests",
+    "format": "prettier --write .",
+    "extract-schema": "tsx scripts/extract-schema.ts"
+  },
+  "dependencies": {
+    "@slack/bolt": "^4.2.0",
+    "@slack/types": "^2.22.0",
+    "@slack/web-api": "^7.19.0",
+    "cheerio": "^1.0.0",
+    "pino": "^9.6.0",
+    "zod": "^3.24.1"
+  },
+  "devDependencies": {
+    "@eslint/js": "^9.18.0",
+    "@types/node": "^22.10.6",
+    "eslint": "^9.18.0",
+    "prettier": "^3.4.2",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.3",
+    "typescript-eslint": "^8.20.0",
+    "vitest": "^2.1.8"
+  },
+  "packageManager": "pnpm@7.33.6"
+}
