@@ -29,8 +29,12 @@ RUN pnpm install --frozen-lockfile --prod && pnpm store prune
 COPY --from=build /app/dist ./dist
 
 # The encrypted profile store lives here, on a mounted volume in production.
+#
+# No VOLUME instruction: Railway's builder rejects it outright, and the mount is
+# declared by the platform anyway — a Railway volume, or `[mounts]` in fly.toml.
+# The directory is created here so the image also works with a plain
+# `docker run -v host_dir:/data`.
 RUN mkdir -p /data && chown node:node /data
-VOLUME ["/data"]
 
 USER node
 
