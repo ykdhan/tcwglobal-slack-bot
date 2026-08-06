@@ -6,7 +6,6 @@ import type { FieldDef, FormSchema } from '../src/forms/types.js';
 const PROFILE_FIELDS: FormSchema['profile'] = {
   fullName: { name: 'p_name' },
   email: { name: 'p_email' },
-  employeeId: { name: 'p_employee' },
   clientName: { name: 'p_client' },
   country: { name: 'p_country' },
   managerName: { name: 'p_manager' },

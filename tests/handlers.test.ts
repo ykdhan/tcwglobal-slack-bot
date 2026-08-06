@@ -62,7 +62,6 @@ function fakeClient() {
 const PROFILE_STATE = {
   full_name_block: { fullName: { type: 'plain_text_input', value: 'Hong Gildong' } },
   email_block: { email: { type: 'plain_text_input', value: 'gildong@example.com' } },
-  employee_id_block: { employeeId: { type: 'plain_text_input', value: 'EMP-1024' } },
   client_name_block: { clientName: { type: 'plain_text_input', value: 'Acme Corp' } },
   country_block: { country: { type: 'static_select', selected_option: { value: 'South Korea' } } },
   manager_name_block: { managerName: { type: 'plain_text_input', value: 'Jane Doe' } },
@@ -361,7 +360,7 @@ describe('request submission', () => {
     expect(dm).toContain('The form structure has changed');
     expect(dm).toContain('field10000009');
     // Everything needed to submit by hand, including the saved details.
-    expect(dm).toContain('EMP-1024');
+    expect(dm).toContain('Acme Corp');
     expect(dm).toContain('Vacation');
   });
 

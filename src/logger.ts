@@ -11,5 +11,5 @@ import { env } from './env.js';
  */
 export const logger = pino({
   level: env.LOG_LEVEL,
-  redact: ['*.email', '*.fullName', '*.employeeId', '*.managerEmail', '*.managerName'],
+  redact: ['*.email', '*.fullName', '*.managerEmail', '*.managerName'],
 });

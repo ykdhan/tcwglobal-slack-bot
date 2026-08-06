@@ -73,7 +73,6 @@ describe('profile modal', () => {
       expect.arrayContaining([
         'full_name_block',
         'email_block',
-        'employee_id_block',
         'client_name_block',
         'country_block',
         'manager_name_block',
@@ -97,7 +96,7 @@ describe('profile modal', () => {
   it('prefills what it already knows', () => {
     const view = profileModal({ initial: DEMO_PROFILE, meta: { next: 'close' } });
 
-    expect(JSON.stringify(view.blocks)).toContain(DEMO_PROFILE.employeeId);
+    expect(JSON.stringify(view.blocks)).toContain(DEMO_PROFILE.clientName);
   });
 
   it('offers removal only once something is stored', () => {

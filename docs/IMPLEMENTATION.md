@@ -10,7 +10,9 @@ Build spec for an agent implementing this repository. Read this file completely 
 
 The user opens the app in Slack, sees their saved details on the App Home tab, clicks a button for the form they need, fills in the request-specific fields in a modal, and submits. The bot POSTs to the form and reports the outcome.
 
-Details that rarely change — name, email, employee ID, client, country, manager — are entered once and reused for every request across every form, until the user clicks **Edit info**.
+Details that rarely change — name, email, client, country, manager — are entered once and reused for every request across every form, until the user clicks **Edit info**.
+
+> **Employee ID was removed** after deployment: the form does not ask for it, so the app should not either. If the expense form turns out to need it, add it back to `ProfileSchema` as `.optional()` per §6.5 rather than making everyone fill it in.
 
 ### Forms
 

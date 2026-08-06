@@ -4,7 +4,7 @@
 
 Open the app in Slack, and the App Home tab shows your saved details and a button per form. Click one, fill in the fields that change per request, and submit. The bot POSTs to the form and reports back by DM.
 
-Name, email, employee ID, client, country and manager are entered once and reused for every request on every form, until you click **Edit info**.
+Name, email, client, country and manager are entered once and reused for every request on every form, until you click **Edit info**.
 
 | Form | ID | Status |
 | --- | --- | --- |

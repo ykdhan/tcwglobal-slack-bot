@@ -11,7 +11,6 @@ import { z } from 'zod';
 export const ProfileSchema = z.object({
   fullName: z.string().min(1),
   email: z.string().email(),
-  employeeId: z.string().min(1),
   clientName: z.string().min(1),
   country: z.string().min(1),
   managerName: z.string().min(1),
@@ -24,7 +23,6 @@ export type Profile = z.infer<typeof ProfileSchema>;
 export const PROFILE_KEYS = [
   'fullName',
   'email',
-  'employeeId',
   'clientName',
   'country',
   'managerName',
@@ -35,7 +33,6 @@ export const PROFILE_KEYS = [
 export const PROFILE_LABELS: Record<keyof Profile, string> = {
   fullName: 'Full name',
   email: 'Email',
-  employeeId: 'Employee ID',
   clientName: 'Client',
   country: 'Country',
   managerName: 'Manager name',

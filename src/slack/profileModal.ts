@@ -66,7 +66,6 @@ export function profileModal(options: ProfileModalOptions): ModalView {
     },
     textInput('fullName', initial?.fullName),
     textInput('email', initial?.email),
-    textInput('employeeId', initial?.employeeId),
     textInput('clientName', initial?.clientName),
   ];
 

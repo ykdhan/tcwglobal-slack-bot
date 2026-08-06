@@ -25,7 +25,6 @@ export type DemoRequest = z.infer<typeof DemoRequestSchema>;
 export const DEMO_PROFILE: Profile = {
   fullName: 'Hong Gildong',
   email: 'gildong@example.com',
-  employeeId: 'EMP-1024',
   clientName: 'Acme Corp',
   country: 'South Korea',
   managerName: 'Jane Doe',
@@ -41,7 +40,6 @@ export const DEMO_REQUEST: DemoRequest = {
 export const PROFILE_FIELD_NAMES: Record<keyof Profile, string> = {
   fullName: 'p_name',
   email: 'p_email',
-  employeeId: 'p_employee',
   clientName: 'p_client',
   country: 'p_country',
   managerName: 'p_manager',

@@ -1,4 +1,4 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs';
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 
@@ -9,7 +9,6 @@ import type { Profile } from '../src/profile.js';
 const PROFILE: Profile = {
   fullName: 'Hong Gildong',
   email: 'gildong@example.com',
-  employeeId: 'EMP-1024',
   clientName: 'Acme Corp',
   country: 'South Korea',
   managerName: 'Jane Doe',
@@ -120,6 +119,20 @@ describe('profile store', () => {
     store.saveProfile('U01ABCDEF', PROFILE);
 
     expect(existsSync(`${dataFile}.tmp`)).toBe(false);
+  });
+
+  it('loads a profile stored before a field was removed', async () => {
+    // Removing a field from ProfileSchema must not strand the profiles already
+    // on disk. They are decrypted, the departed field is dropped, and the app
+    // boots — rather than throwing and taking the deployment down.
+    const { encrypt } = await import('../src/store/crypto.js');
+    const legacy = { ...PROFILE, employeeId: 'EMP-1024' };
+    writeFileSync(dataFile, JSON.stringify({ U01ABCDEF: encrypt(JSON.stringify(legacy)) }));
+
+    const store = await loadStore();
+
+    expect(store.getProfile('U01ABCDEF')).toEqual(PROFILE);
+    expect(store.getProfile('U01ABCDEF')).not.toHaveProperty('employeeId');
   });
 
   it('throws at load when the stored data cannot be decrypted', async () => {
