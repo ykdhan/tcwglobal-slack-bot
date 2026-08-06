@@ -151,7 +151,7 @@ Socket Mode holds a WebSocket open, so the process must run continuously — whi
 ### Railway
 
 1. Push to GitHub, then **New Project → Deploy from GitHub repo**
-2. **Settings → Volumes → Add Volume**, mount path `/data`
+2. Add a volume mounted at `/data` — created from the **project canvas** (right-click, or `⌘K`), not from inside the service settings. `railway volume add --mount-path /data` does the same thing
 3. Set the variables below
 4. **Leave the health check empty.** The app opens no HTTP port, so a configured health check fails forever and produces a restart loop
 5. Do not generate a public domain — nothing would use it
@@ -159,20 +159,23 @@ Socket Mode holds a WebSocket open, so the process must run continuously — whi
 ```dotenv
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_APP_TOKEN=xapp-...
-ALLOWED_TEAM_IDS=T01ABCDEFGH
 PROFILE_ENC_KEY=<same value as local>
 DATA_FILE=/data/profiles.json
 NODE_ENV=production
 LOG_LEVEL=info
 TZ=Asia/Seoul
+RAILWAY_RUN_UID=0
 ```
 
-Two values differ from local:
+Two values differ from local, and one exists only on Railway:
 
 | Variable | Local | Railway | If you get it wrong |
 | --- | --- | --- | --- |
 | `DATA_FILE` | `./data/profiles.json` | `/data/profiles.json` | Writes land in ephemeral container storage; every profile is lost on redeploy |
 | `LOG_LEVEL` | `debug` | `info` | Noise only |
+| `RAILWAY_RUN_UID` | — | `0` | Saving a profile fails with `EACCES` — see below |
+
+`RAILWAY_RUN_UID=0` runs the container as root. The Dockerfile drops to `USER node`, but Railway mounts volumes owned by root, so the `node` user cannot write to `/data`. The failure is late and misleading: the app boots fine and the Home tab renders, because nothing is written until someone saves a profile. Running as root gives up the non-root hardening, which is an acceptable trade here — the container listens on no port and processes only Slack-signed payloads.
 
 **Verify the volume immediately after the first deploy**: save a profile, push any commit to trigger a redeploy, and confirm the profile is still on the Home tab. If it vanished, the mount path and `DATA_FILE` disagree. This is not reproducible locally and is annoying to diagnose later.
 
@@ -240,6 +243,7 @@ The Home tab grows a button, the handlers register themselves, and the Dockerfil
 | `invalid_auth` at boot | Bot and app tokens swapped, or the app-level token was never created |
 | Restart loop on Railway | A health check is configured. The app opens no port — clear it |
 | Profiles vanish on redeploy | `DATA_FILE` does not match the volume mount path |
+| Boots fine, but saving a profile does nothing | `RAILWAY_RUN_UID=0` is missing; the volume is root-owned and the container is not |
 | Throws at boot on the profile store | `PROFILE_ENC_KEY` differs from the key the file was written with |
 | Details on the Home tab are stale | A code path changed a profile without republishing the view |
 | "Could not confirm whether the submission went through" | Genuinely ambiguous. **Check the form for a duplicate before resubmitting** |

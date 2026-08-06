@@ -30,16 +30,6 @@ const EnvSchema = z.object({
       'SLACK_APP_TOKEN must start with xapp- (Basic Information -> App-Level Tokens, scope connections:write)',
     ),
 
-  ALLOWED_TEAM_IDS: z
-    .string()
-    .min(1, 'ALLOWED_TEAM_IDS is required')
-    .transform((value) =>
-      value
-        .split(',')
-        .map((id) => id.trim())
-        .filter(Boolean),
-    ),
-
   DATA_FILE: z.string().default('./data/profiles.json'),
 
   PROFILE_ENC_KEY: base64Key32,

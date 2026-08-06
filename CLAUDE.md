@@ -27,6 +27,7 @@ These are decisions from `docs/IMPLEMENTATION.md` §2, not defaults to improve o
 - **No separate cache layer.** The module-level object in `store/profiles.ts` *is* the cache.
 - **No slash commands.** The entry point is the App Home tab; there is no `commands` scope.
 - **Single process.** Two instances would diverge — the in-memory store is authoritative.
+- **No workspace allowlist.** Deliberately dropped from `IMPLEMENTATION.md` §7.5: the bot token already scopes the app to one workspace and the app is not distributed. Reinstate a Bolt global middleware only if the app is ever distributed or org-deployed.
 - **All code, identifiers, Slack UI strings, log messages, comments and commit messages in English.** `docs/PLAN.md` is the only Korean file.
 
 ## Architecture

@@ -12,7 +12,6 @@ export default defineConfig({
     env: {
       SLACK_BOT_TOKEN: 'xoxb-test-token',
       SLACK_APP_TOKEN: 'xapp-test-token',
-      ALLOWED_TEAM_IDS: 'T0TESTTEAM',
       DATA_FILE: './data/test-profiles.json',
       PROFILE_ENC_KEY: Buffer.alloc(32, 7).toString('base64'),
       LOG_LEVEL: 'fatal',

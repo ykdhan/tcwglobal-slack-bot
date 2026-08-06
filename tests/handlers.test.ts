@@ -10,7 +10,6 @@ import { DEMO_PROFILE, startFormServer, type FormServer } from './helpers/synthe
 const FIXTURE = readFileSync(new URL('./fixtures/pto-form.html', import.meta.url), 'utf8');
 
 const USER = 'U01ABCDEF';
-const TEAM = 'T0TESTTEAM';
 
 /**
  * The whole Slack flow, without Slack.
@@ -418,19 +417,11 @@ describe('adding a second form', () => {
   });
 });
 
-describe('team allowlist', () => {
-  async function passesMiddleware(teamId: string | undefined) {
-    const next = vi.fn().mockResolvedValue(undefined);
-    const ack = vi.fn().mockResolvedValue(undefined);
-    await app.middleware[0]!({ context: { teamId }, next, ack });
-    return next.mock.calls.length > 0;
-  }
-
-  it('lets an allowed workspace through', async () => {
-    expect(await passesMiddleware(TEAM)).toBe(true);
-  });
-
-  it('drops events from any other workspace', async () => {
-    expect(await passesMiddleware('T0SOMEONEELSE')).toBe(false);
+describe('global middleware', () => {
+  it('registers none', () => {
+    // There is no workspace allowlist: the bot token already scopes the app to
+    // one workspace. A middleware appearing here means something reinstated a
+    // check that the deployment does not configure.
+    expect(app.middleware).toHaveLength(0);
   });
 });

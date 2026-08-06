@@ -6,7 +6,6 @@ import type {
 } from '@slack/bolt';
 import type { WebClient } from '@slack/web-api';
 
-import { env } from '../env.js';
 import { submitForm, withRetry } from '../formstack/engine.js';
 import { forms, getForm } from '../forms/registry.js';
 import type { FormDefinition } from '../forms/types.js';
@@ -135,20 +134,19 @@ function makeSubmitHandler<T>(form: FormDefinition<T>) {
   };
 }
 
+/**
+ * There is no workspace allowlist.
+ *
+ * The bot token is scoped to the single workspace the app is installed in, and
+ * the app is not distributed (`org_deploy_enabled: false`), so no other
+ * workspace can produce events over this Socket Mode connection in the first
+ * place. A team ID check would only re-state what the token already guarantees.
+ *
+ * That stops being true if the app is ever distributed or installed org-wide.
+ * If either happens, reinstate a Bolt global middleware here that drops events
+ * whose `context.teamId` is not on a configured list.
+ */
 export function registerHandlers(app: App): void {
-  // Reject anything from a workspace this bot was not installed for, once, in
-  // one place, rather than as a check every handler could forget.
-  app.use(async (args) => {
-    const teamId = args.context.teamId;
-    if (teamId && !env.ALLOWED_TEAM_IDS.includes(teamId)) {
-      logger.warn({ teamId }, 'ignoring an event from a workspace that is not allowed');
-      const ack = (args as { ack?: () => Promise<unknown> }).ack;
-      if (typeof ack === 'function') await ack();
-      return;
-    }
-    await args.next();
-  });
-
   app.event('app_home_opened', async ({ event, client }) => {
     if (event.tab !== 'home') return;
     await client.views.publish({ user_id: event.user, view: homeView(getProfile(event.user)) });

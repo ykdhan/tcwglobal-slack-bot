@@ -517,10 +517,11 @@ if (process.env.CI) {
 }
 ```
 
+> **`ALLOWED_TEAM_IDS` was dropped — see §7.5.** It is absent from `src/env.ts`, `.env.example` and the deployment variables. The rest of this block is current.
+
 Notes on the env module:
 
 - `process.exit(1)` rather than a thrown error, so the operator sees the formatted list instead of a stack trace burying it.
-- `ALLOWED_TEAM_IDS` is transformed to `string[]` at the boundary, so consumers never re-split it.
 - The two Slack tokens are easy to swap by accident. The `startsWith` checks catch that immediately instead of letting the app boot and fail mysteriously on first use.
 
 ### 6.15 `.env.example`
@@ -541,9 +542,7 @@ SLACK_BOT_TOKEN=xoxb-
 # Where: Settings -> Basic Information -> App-Level Tokens -> Generate Token and Scopes
 SLACK_APP_TOKEN=xapp-
 
-# Comma-separated Slack workspace IDs allowed to use this bot.
-# Where: open Slack in a browser, the URL contains /client/T01ABCDEFGH/
-ALLOWED_TEAM_IDS=
+# (ALLOWED_TEAM_IDS was dropped — see 7.5)
 
 # ── Storage ──────────────────────────────────────────────────────────────
 # Path to the encrypted profile store.
@@ -654,9 +653,13 @@ Errors the user can fix go inline. Errors the operator must fix go to a DM, beca
 
 If measured latency ever approaches 2.5s, switch to `ack()` first and report via `chat.postMessage`. Do not preemptively build that.
 
-### 7.5 Team allowlist
+### 7.5 Team allowlist — dropped
 
-Reject any event whose team ID is not in `ALLOWED_TEAM_IDS`. Implement as Bolt global middleware, not per-handler checks.
+~~Reject any event whose team ID is not in `ALLOWED_TEAM_IDS`. Implement as Bolt global middleware, not per-handler checks.~~
+
+**Superseded during deployment.** There is no allowlist and no `ALLOWED_TEAM_IDS` variable. The bot token is scoped to the single workspace the app is installed in, and the app is not distributed (`org_deploy_enabled: false`), so no other workspace can produce events over the Socket Mode connection. The check would only re-state what the token already guarantees.
+
+Reinstate it — as Bolt global middleware, not per-handler checks — if the app is ever distributed or installed org-wide.
 
 ---
 
@@ -774,13 +777,15 @@ Operator steps, to document in the README:
 ```dotenv
 SLACK_BOT_TOKEN=xoxb-...
 SLACK_APP_TOKEN=xapp-...
-ALLOWED_TEAM_IDS=T01ABCDEFGH
 PROFILE_ENC_KEY=<same value as local>
 DATA_FILE=/data/profiles.json
 NODE_ENV=production
 LOG_LEVEL=info
 TZ=Asia/Seoul
+RAILWAY_RUN_UID=0
 ```
+
+`RAILWAY_RUN_UID=0` runs the container as root. The Dockerfile drops to `USER node`, but Railway mounts volumes owned by root, so the `node` user cannot write to `/data`. The failure is late: the app boots and renders, and only the first profile save fails with `EACCES`.
 
 Two values differ from local, and both matter:
 
